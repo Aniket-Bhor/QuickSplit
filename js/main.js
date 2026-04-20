@@ -1,16 +1,39 @@
 import { state } from './state.js';
+import { auth } from './auth.js';
+import { seedDummyData } from './firebase.js';
 import { $, qs, qsa, formatCurrency } from './utils/helpers.js';
 import { calculateBalances, simplifyDebts, calculateRawDebts } from './calc.js';
 import * as ui from './ui.js';
 
 class App {
     constructor() {
-        this.initSelectors();
-        this.bindEvents();
-        this.updateUI();
-        this.checkDemoMode();
-        if (state.isHackerMode) {
-            document.body.classList.add('hacker-mode');
+        console.log("SmartSplit: Initializing App...");
+        try {
+            // One-time cleanup of local storage (except current session)
+            this.clearLocalData();
+            
+            // Seed dummy data once
+            this.seedData();
+            
+            this.initSelectors();
+            this.bindEvents();
+            
+            // Show loading overlay if user is logged in and not in demo mode
+            if (auth.isAuthenticated() && !state.isDemoMode) {
+                this.loadingOverlay.classList.remove('hidden');
+                // Auto-hide after 5 seconds if firebase fails to respond
+                setTimeout(() => this.loadingOverlay.classList.add('hidden'), 5000);
+            }
+
+            this.updateUI();
+            this.checkDemoMode();
+            this.updateUserDisplay();
+            if (state.isHackerMode) {
+                document.body.classList.add('hacker-mode');
+            }
+            console.log("SmartSplit: App Initialized Successfully.");
+        } catch (error) {
+            console.error("SmartSplit Initialization Error:", error);
         }
     }
 
@@ -37,6 +60,8 @@ class App {
         this.sunIcon = $('sunIcon');
         this.moonIcon = $('moonIcon');
         this.fullResetBtn = $('fullResetBtn');
+        this.userNameDisplay = $('userNameDisplay');
+        this.logoutBtn = $('logoutBtn');
         this.editingExpenseId = null;
         
         // Mode Selectors
@@ -86,6 +111,7 @@ class App {
         $('demoModeBtn').onclick = () => this.toggleDemoMode();
         this.themeToggle.onclick = () => this.toggleTheme();
         this.fullResetBtn.onclick = () => this.handleFullReset();
+        this.logoutBtn.onclick = () => auth.logout();
         
         $('selectAllBtn').onclick = () => {
             qsa('input[name="splitWith"]').forEach(cb => cb.checked = true);
@@ -101,7 +127,39 @@ class App {
         this.initTheme();
     }
 
+    updateUserDisplay() {
+        const user = auth.getCurrentUser();
+        if (user && this.userNameDisplay) {
+            this.userNameDisplay.textContent = user.username;
+        }
+    }
+
+    clearLocalData() {
+        // Only clear if not already cleaned in this session
+        if (sessionStorage.getItem('qs_cleaned') === 'true') return;
+
+        const currentSession = localStorage.getItem('qs_current_user');
+        localStorage.clear();
+        
+        // Restore session if it existed
+        if (currentSession) {
+            localStorage.setItem('qs_current_user', currentSession);
+        }
+        
+        sessionStorage.setItem('qs_cleaned', 'true');
+        console.log("SmartSplit: Local storage cleaned successfully.");
+    }
+
+    async seedData() {
+        if (sessionStorage.getItem('qs_seeded') === 'true') return;
+        await seedDummyData();
+        sessionStorage.setItem('qs_seeded', 'true');
+    }
+
     async updateUI() {
+        // Hide loading overlay when UI updates (meaning data is ready)
+        if (this.loadingOverlay) this.loadingOverlay.classList.add('hidden');
+        
         const balances = calculateBalances(state.members, state.expenses, state.payments);
         const { settlements: optimizedSettlements, naiveCount } = simplifyDebts(balances);
         const rawSettlements = calculateRawDebts(state.expenses, state.payments);
@@ -624,7 +682,7 @@ class App {
     handleFullReset() {
         ui.showConfirm({
             title: 'Wipe All Data?',
-            message: 'This will permanently delete ALL members, expenses, and history. This action cannot be undone.',
+            message: 'This will permanently delete ALL your members, expenses, and history. This action cannot be undone.',
             confirmText: 'Delete Everything',
             confirmClass: 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20',
             iconBg: 'bg-red-500/10',
@@ -632,7 +690,18 @@ class App {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>`,
             onConfirm: () => {
-                localStorage.clear(); // Clear all including settings
+                // Only clear current user's data
+                const user = auth.getCurrentUser();
+                if (user) {
+                    const keysToRemove = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key.startsWith(`u_${user.id}_`)) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                }
                 location.reload();
             }
         });

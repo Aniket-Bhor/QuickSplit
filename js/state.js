@@ -1,64 +1,116 @@
 import { STORAGE_KEYS, DEMO_DATA } from './utils/constants.js';
 import { generateUUID } from './utils/helpers.js';
+import { auth } from './auth.js';
+import { db, ref, set, onValue } from './firebase.js';
 
 class State {
     constructor() {
-        this.isDemoMode = localStorage.getItem(STORAGE_KEYS.DEMO_MODE) === 'true';
-        this.settlementMode = localStorage.getItem('qs_settlement_mode') || 'optimized';
-        this.isHackerMode = localStorage.getItem('qs_hacker_mode') === 'true';
+        this.isDemoMode = false;
+        this.settlementMode = 'optimized';
+        this.isHackerMode = false;
         this.tutorialActive = false;
         this.tutorialStep = 0;
-        this.load();
+        
+        // Initial clean state
+        this.members = [];
+        this.expenses = [];
+        this.payments = [];
+        this.settlementHistory = [];
+        
+        // Start Firebase sync if user exists
+        this.initFirebaseSync();
+    }
+
+    getUserKey(key) {
+        const user = auth.getCurrentUser();
+        if (!user) return key;
+        return `u_${user.id}_${key}`;
+    }
+
+    initFirebaseSync() {
+        const user = auth.getCurrentUser();
+        if (!user) return;
+
+        const userPath = `users/${user.username}/data`;
+        const dataRef = ref(db, userPath);
+
+        // Real-time listener
+        onValue(dataRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                console.log("Firebase: Syncing data...", data);
+                this.members = data.members || [];
+                this.expenses = data.expenses || [];
+                this.payments = data.payments || [];
+                this.settlementHistory = data.settlementHistory || [];
+                
+                // Sync settings if they exist
+                if (data.settings) {
+                    this.settlementMode = data.settings.settlementMode || this.settlementMode;
+                    this.isHackerMode = data.settings.isHackerMode || this.isHackerMode;
+                    this.isDemoMode = data.settings.isDemoMode || this.isDemoMode;
+                }
+                
+                // Trigger UI update if app is running
+                if (window.app) window.app.updateUI();
+            }
+        }, (error) => {
+            console.error("Firebase Sync Error:", error);
+        });
     }
 
     load() {
-        if (this.isDemoMode) {
-            // Load demo data from storage or use default demo data if not exists
-            this.members = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_MEMBERS)) || [...DEMO_DATA.members];
-            this.expenses = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_EXPENSES)) || [...DEMO_DATA.expenses];
-            this.payments = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_PAYMENTS)) || [];
-            this.settlementHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEMO_SETTLEMENT_HISTORY)) || [];
-        } else {
-            // Load real user data
-            this.members = JSON.parse(localStorage.getItem(STORAGE_KEYS.MEMBERS)) || [];
-            this.expenses = JSON.parse(localStorage.getItem(STORAGE_KEYS.EXPENSES)) || [];
-            this.payments = JSON.parse(localStorage.getItem(STORAGE_KEYS.PAYMENTS)) || [];
-            this.settlementHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTLEMENT_HISTORY)) || [];
-        }
+        // No longer loading from local storage
     }
 
     save() {
-        if (this.isDemoMode) {
-            localStorage.setItem(STORAGE_KEYS.DEMO_MEMBERS, JSON.stringify(this.members));
-            localStorage.setItem(STORAGE_KEYS.DEMO_EXPENSES, JSON.stringify(this.expenses));
-            localStorage.setItem(STORAGE_KEYS.DEMO_PAYMENTS, JSON.stringify(this.payments));
-            localStorage.setItem(STORAGE_KEYS.DEMO_SETTLEMENT_HISTORY, JSON.stringify(this.settlementHistory));
-        } else {
-            localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(this.members));
-            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(this.expenses));
-            localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments));
-            localStorage.setItem(STORAGE_KEYS.SETTLEMENT_HISTORY, JSON.stringify(this.settlementHistory));
+        // Save to Firebase if user is logged in
+        const user = auth.getCurrentUser();
+        if (user && !this.isDemoMode) {
+            const userPath = `users/${user.username}/data`;
+            const dataRef = ref(db, userPath);
+            set(dataRef, {
+                members: this.members,
+                expenses: this.expenses,
+                payments: this.payments,
+                settlementHistory: this.settlementHistory,
+                settings: {
+                    settlementMode: this.settlementMode,
+                    isHackerMode: this.isHackerMode,
+                    isDemoMode: this.isDemoMode
+                }
+            }).catch(error => {
+                console.error("Firebase Save Error:", error);
+            });
         }
     }
 
     setDemoMode(active) {
         this.isDemoMode = active;
-        localStorage.setItem(STORAGE_KEYS.DEMO_MODE, active.toString());
         if (active) {
+            this.members = [...DEMO_DATA.members];
+            this.expenses = [...DEMO_DATA.expenses];
+            this.payments = [];
+            this.settlementHistory = [];
             this.tutorialActive = true;
             this.tutorialStep = 0;
+        } else {
+            // Re-initialize Firebase sync to restore user data
+            this.initFirebaseSync();
         }
-        this.load();
+        
+        // Trigger UI update
+        if (window.app) window.app.updateUI();
     }
 
     setSettlementMode(mode) {
         this.settlementMode = mode;
-        localStorage.setItem('qs_settlement_mode', mode);
+        this.save();
     }
 
     setHackerMode(active) {
         this.isHackerMode = active;
-        localStorage.setItem('qs_hacker_mode', active.toString());
+        this.save();
     }
 
     nextTutorialStep() {
