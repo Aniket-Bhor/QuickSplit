@@ -124,14 +124,20 @@
             let isValid = true;
 
             if (!isLogin) {
-                if (!AUTH_REGEX.NAME.test(nameInput.value)) {
-                    nameError.textContent = 'Name must be at least 2 characters (letters only)';
+                const nameVal = nameInput.value.trim();
+                if (nameVal.length < 2) {
+                    nameError.textContent = 'Name must be at least 2 characters';
+                    nameError.classList.remove('hidden');
+                    isValid = false;
+                } else if (!/^[A-Za-z\s]+$/.test(nameVal)) {
+                    nameError.textContent = 'Name can only contain letters and spaces';
                     nameError.classList.remove('hidden');
                     isValid = false;
                 }
             }
 
-            if (!AUTH_REGEX.EMAIL.test(emailInput.value)) {
+            const emailVal = emailInput.value.trim();
+            if (!AUTH_REGEX.EMAIL.test(emailVal)) {
                 emailError.textContent = 'Enter a valid email address';
                 emailError.classList.remove('hidden');
                 isValid = false;
@@ -157,6 +163,7 @@
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = `<span class="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2"></span> Processing...`;
+            errorMsg.classList.add('hidden');
 
             try {
                 if (isLogin) {
@@ -166,7 +173,8 @@
                 }
                 window.location.href = 'index.html';
             } catch (err) {
-                errorMsg.textContent = err.message;
+                console.error("Auth Error:", err);
+                errorMsg.textContent = err.message || 'An error occurred. Please try again.';
                 errorMsg.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.textContent = isLogin ? 'Sign In' : 'Sign Up';

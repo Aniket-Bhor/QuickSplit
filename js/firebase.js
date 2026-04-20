@@ -17,9 +17,12 @@ const db = getDatabase(app);
 
 // Dummy Data Seeding Utility
 async function seedDummyData() {
+    const emailKey = 'demo_example_com'.replace(/\./g, '_');
+    
     const dummyUser = {
         id: 'user_admin_001',
-        username: 'admin',
+        name: 'Admin User',
+        email: 'demo@example.com',
         password: 'password123',
         createdAt: new Date().toISOString()
     };
@@ -40,17 +43,16 @@ async function seedDummyData() {
         settlementHistory: [],
         settings: {
             settlementMode: 'optimized',
-            isHackerMode: false,
-            isDemoMode: false
+            isHackerMode: false
         }
     };
 
     try {
-        // Seed user profile
-        await set(ref(db, 'users/admin'), dummyUser);
+        // Seed user profile with email-based key
+        await set(ref(db, `users/${emailKey}`), dummyUser);
         // Seed user data
-        await set(ref(db, 'users/admin/data'), dummyData);
-        console.log("Firebase: Dummy data seeded for user 'admin' (password: password123)");
+        await set(ref(db, `users/${emailKey}/data`), dummyData);
+        console.log("Firebase: Dummy data seeded for user 'demo@example.com' (password: password123)");
     } catch (error) {
         console.error("Firebase Seed Error:", error);
     }

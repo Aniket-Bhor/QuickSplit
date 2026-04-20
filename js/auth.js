@@ -6,9 +6,9 @@ export const AUTH_KEYS = {
 };
 
 export const AUTH_REGEX = {
-    NAME: /^[A-Za-z ]{2,}$/,
+    NAME: /^[A-Za-z\s]{2,}$/,
     EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-    PASSWORD: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
+    PASSWORD: /^(?=.*[A-Za-z])(?=.*\d).{6,}$/
 };
 
 class Auth {
@@ -17,8 +17,12 @@ class Auth {
     }
 
     validateName(name) {
-        if (!AUTH_REGEX.NAME.test(name)) {
-            throw new Error('Name must be at least 2 characters (letters and spaces only)');
+        const trimmed = name.trim();
+        if (trimmed.length < 2) {
+            throw new Error('Name must be at least 2 characters');
+        }
+        if (!/^[A-Za-z\s]+$/.test(trimmed)) {
+            throw new Error('Name can only contain letters and spaces');
         }
     }
 
