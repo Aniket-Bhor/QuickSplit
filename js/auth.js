@@ -6,8 +6,9 @@ export const AUTH_KEYS = {
 };
 
 export const AUTH_REGEX = {
-    USERNAME: /^[a-zA-Z0-9_]{3,20}$/,
-    PASSWORD: /^(?=.*[A-Za-z])(?=.*\d).{6,}$/
+    NAME: /^[A-Za-z ]{2,}$/,
+    EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    PASSWORD: /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
 };
 
 class Auth {
@@ -15,34 +16,43 @@ class Auth {
         this.currentUser = JSON.parse(localStorage.getItem(AUTH_KEYS.CURRENT_USER)) || null;
     }
 
-    validateUsername(username) {
-        if (!AUTH_REGEX.USERNAME.test(username)) {
-            throw new Error('Username must be 3-20 characters (alphanumeric or underscore)');
+    validateName(name) {
+        if (!AUTH_REGEX.NAME.test(name)) {
+            throw new Error('Name must be at least 2 characters (letters and spaces only)');
+        }
+    }
+
+    validateEmail(email) {
+        if (!AUTH_REGEX.EMAIL.test(email)) {
+            throw new Error('Enter a valid email address');
         }
     }
 
     validatePassword(password) {
         if (!AUTH_REGEX.PASSWORD.test(password)) {
-            throw new Error('Password must be at least 6 characters and include one letter and one number');
+            throw new Error('Password must be at least 6 characters and include letters and numbers');
         }
     }
 
-    async signup(username, password) {
-        this.validateUsername(username);
+    async signup(name, email, password) {
+        this.validateName(name);
+        this.validateEmail(email);
         this.validatePassword(password);
 
         try {
-            // Firebase Signup
-            const userRef = ref(db, `users/${username}`);
+            // Encode email for Firebase key (replace dots with underscores as dots are restricted)
+            const emailKey = email.replace(/\./g, '_');
+            const userRef = ref(db, `users/${emailKey}`);
             const snapshot = await get(userRef);
             
             if (snapshot.exists()) {
-                throw new Error('Username already exists');
+                throw new Error('User with this email already exists');
             }
 
             const newUser = {
                 id: 'user_' + Math.random().toString(36).substr(2, 9),
-                username,
+                name,
+                email,
                 password, // Plain for hackathon demo
                 createdAt: new Date().toISOString()
             };
@@ -50,32 +60,37 @@ class Auth {
             // Save to Firebase
             await set(userRef, newUser);
 
-            return await this.login(username, password);
+            return await this.login(email, password);
         } catch (error) {
             console.error("Firebase Signup Error:", error);
             throw error;
         }
     }
 
-    async login(username, password) {
-        this.validateUsername(username);
+    async login(email, password) {
+        this.validateEmail(email);
         this.validatePassword(password);
 
         try {
-            // Firebase Login
-            const userRef = ref(db, `users/${username}`);
+            const emailKey = email.replace(/\./g, '_');
+            const userRef = ref(db, `users/${emailKey}`);
             const snapshot = await get(userRef);
             
             if (!snapshot.exists()) {
-                throw new Error('Invalid username or password');
+                throw new Error('Invalid email or password');
             }
 
             const user = snapshot.val();
             if (user.password !== password) {
-                throw new Error('Invalid password');
+                throw new Error('Invalid email or password');
             }
 
-            const sessionUser = { id: user.id, username: user.username };
+            const sessionUser = { 
+                id: user.id, 
+                username: user.name, // Use display name for UI
+                email: user.email,
+                emailKey: emailKey 
+            };
             this.currentUser = sessionUser;
             localStorage.setItem(AUTH_KEYS.CURRENT_USER, JSON.stringify(sessionUser));
             return sessionUser;

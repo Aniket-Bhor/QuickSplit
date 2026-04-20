@@ -35,19 +35,27 @@
 
         <form id="auth-form" class="mt-8 space-y-6">
             <div class="space-y-4">
-                <div>
-                    <label for="username" class="block text-sm font-medium text-slate-300">Username</label>
-                    <input id="username" name="username" type="text" required 
+                <div id="name-container" class="hidden">
+                    <label for="name" class="block text-sm font-medium text-slate-300">Full Name</label>
+                    <input id="name" name="name" type="text" 
                         class="mt-1 block w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                        placeholder="Enter your username">
-                    <p id="username-help" class="mt-1 text-[10px] text-slate-500 hidden">3-20 characters, alphanumeric or underscore</p>
+                        placeholder="Enter your full name">
+                    <p id="name-error" class="mt-1 text-[10px] text-red-400 hidden"></p>
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium text-slate-300">Email Address</label>
+                    <input id="email" name="email" type="email" required 
+                        class="mt-1 block w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                        placeholder="user@example.com">
+                    <p id="email-error" class="mt-1 text-[10px] text-red-400 hidden"></p>
                 </div>
                 <div>
                     <label for="password" class="block text-sm font-medium text-slate-300">Password</label>
                     <input id="password" name="password" type="password" required 
                         class="mt-1 block w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                         placeholder="••••••••">
-                    <p id="password-help" class="mt-1 text-[10px] text-slate-500 hidden">At least 6 characters, 1 letter and 1 number</p>
+                    <p id="password-error" class="mt-1 text-[10px] text-red-400 hidden"></p>
+                    <p id="password-help" class="mt-1 text-[10px] text-slate-500 hidden">Min 6 characters, at least 1 letter and 1 number</p>
                 </div>
             </div>
 
@@ -69,16 +77,24 @@
     </div>
 
     <script type="module">
-        import { auth } from './js/auth.js';
+        import { auth, AUTH_REGEX } from './js/auth.js';
 
         const form = document.getElementById('auth-form');
         const submitBtn = document.getElementById('submit-btn');
         const toggleBtn = document.getElementById('toggle-auth');
         const errorMsg = document.getElementById('error-message');
-        const usernameHelp = document.getElementById('username-help');
+        const nameContainer = document.getElementById('name-container');
         const passwordHelp = document.getElementById('password-help');
         const title = document.querySelector('h2');
         const subtitle = document.querySelector('p');
+
+        const nameInput = document.getElementById('name');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+
+        const nameError = document.getElementById('name-error');
+        const emailError = document.getElementById('email-error');
+        const passwordError = document.getElementById('password-error');
 
         let isLogin = true;
 
@@ -89,24 +105,64 @@
             submitBtn.textContent = isLogin ? 'Sign In' : 'Sign Up';
             toggleBtn.textContent = isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In';
             
-            usernameHelp.classList.toggle('hidden', isLogin);
+            nameContainer.classList.toggle('hidden', isLogin);
             passwordHelp.classList.toggle('hidden', isLogin);
+            
             errorMsg.classList.add('hidden');
+            clearErrors();
         });
+
+        function clearErrors() {
+            [nameError, emailError, passwordError].forEach(err => {
+                err.textContent = '';
+                err.classList.add('hidden');
+            });
+        }
+
+        function validateForm() {
+            clearErrors();
+            let isValid = true;
+
+            if (!isLogin) {
+                if (!AUTH_REGEX.NAME.test(nameInput.value)) {
+                    nameError.textContent = 'Name must be at least 2 characters (letters only)';
+                    nameError.classList.remove('hidden');
+                    isValid = false;
+                }
+            }
+
+            if (!AUTH_REGEX.EMAIL.test(emailInput.value)) {
+                emailError.textContent = 'Enter a valid email address';
+                emailError.classList.remove('hidden');
+                isValid = false;
+            }
+
+            if (!AUTH_REGEX.PASSWORD.test(passwordInput.value)) {
+                passwordError.textContent = 'Password must be min 6 chars with 1 letter & 1 number';
+                passwordError.classList.remove('hidden');
+                isValid = false;
+            }
+
+            return isValid;
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = form.username.value;
-            const password = form.password.value;
+            
+            if (!validateForm()) return;
+
+            const name = nameInput.value;
+            const email = emailInput.value;
+            const password = passwordInput.value;
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = `<span class="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2"></span> Processing...`;
 
             try {
                 if (isLogin) {
-                    await auth.login(username, password);
+                    await auth.login(email, password);
                 } else {
-                    await auth.signup(username, password);
+                    await auth.signup(name, email, password);
                 }
                 window.location.href = 'index.html';
             } catch (err) {

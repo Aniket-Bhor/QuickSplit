@@ -130,7 +130,11 @@ class App {
     updateUserDisplay() {
         const user = auth.getCurrentUser();
         if (user && this.userNameDisplay) {
-            this.userNameDisplay.textContent = user.username;
+            // Display user name and email
+            this.userNameDisplay.innerHTML = `
+                <span class="block">${user.username}</span>
+                <span class="block text-[8px] text-slate-500 lowercase font-normal">${user.email}</span>
+            `;
         }
     }
 
@@ -328,6 +332,9 @@ class App {
     checkDemoMode() {
         if (state.isDemoMode) {
             this.demoBadge.classList.remove('hidden');
+            this.demoBadge.textContent = 'Demo Mode';
+            this.demoBadge.className = 'px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-amber-500/20';
+            
             $('demoModeBtn').innerHTML = `
                 <span class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-red-500"></span>
@@ -336,7 +343,10 @@ class App {
             $('demoModeBtn').classList.replace('text-amber-400', 'text-red-400');
             $('demoModeBtn').classList.replace('border-amber-400/20', 'border-red-400/20');
         } else {
-            this.demoBadge.classList.add('hidden');
+            this.demoBadge.classList.remove('hidden');
+            this.demoBadge.textContent = 'User Mode';
+            this.demoBadge.className = 'px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-green-500/20';
+
             $('demoModeBtn').innerHTML = `
                 <span class="relative flex h-2 w-2">
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -350,18 +360,26 @@ class App {
 
     toggleDemoMode() {
         const active = !state.isDemoMode;
-        state.setDemoMode(active);
         
-        if (active) {
-            state.payments = [];
-            setTimeout(() => {
-                this.startTutorial();
-            }, 500);
-        }
-        
-        this.checkDemoMode();
-        this.updateUI();
-        ui.showToast(this.toastContainer, active ? "Entered Demo Mode" : "Restored User Data", "success");
+        ui.showConfirm({
+            title: active ? 'Enter Demo Mode?' : 'Switch to User Mode?',
+            message: active 
+                ? 'This will hide your real data and show sample data. You can switch back anytime.' 
+                : 'This will restore your personal cloud data.',
+            confirmText: active ? 'Enter Demo' : 'Restore User Data',
+            confirmClass: active ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white',
+            onConfirm: () => {
+                state.setDemoMode(active);
+                this.checkDemoMode();
+                this.updateUI();
+                
+                if (active) {
+                    setTimeout(() => this.startTutorial(), 500);
+                }
+                
+                ui.showToast(this.toastContainer, active ? "Demo Mode Active" : "User Mode Restored", "success");
+            }
+        });
     }
 
     startTutorial() {
@@ -682,27 +700,25 @@ class App {
     handleFullReset() {
         ui.showConfirm({
             title: 'Wipe All Data?',
-            message: 'This will permanently delete ALL your members, expenses, and history. This action cannot be undone.',
-            confirmText: 'Delete Everything',
+            message: 'Are you sure? This will delete all your group data, expenses, and account from our servers permanently.',
+            confirmText: 'Wipe Everything',
             confirmClass: 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20',
             iconBg: 'bg-red-500/10',
             icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>`,
-            onConfirm: () => {
-                // Only clear current user's data
-                const user = auth.getCurrentUser();
-                if (user) {
-                    const keysToRemove = [];
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key.startsWith(`u_${user.id}_`)) {
-                            keysToRemove.push(key);
-                        }
-                    }
-                    keysToRemove.forEach(k => localStorage.removeItem(k));
+            onConfirm: async () => {
+                try {
+                    this.loadingOverlay.classList.remove('hidden');
+                    await state.wipeAllData();
+                    ui.showToast(this.toastContainer, "All data wiped. Redirecting...", "info");
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 1500);
+                } catch (error) {
+                    this.loadingOverlay.classList.add('hidden');
+                    ui.showToast(this.toastContainer, "Wipe failed. Try again.", "error");
                 }
-                location.reload();
             }
         });
     }

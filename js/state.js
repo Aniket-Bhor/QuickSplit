@@ -1,11 +1,11 @@
 import { STORAGE_KEYS, DEMO_DATA } from './utils/constants.js';
 import { generateUUID } from './utils/helpers.js';
 import { auth } from './auth.js';
-import { db, ref, set, onValue } from './firebase.js';
+import { db, ref, set, onValue, remove } from './firebase.js';
 
 class State {
     constructor() {
-        this.isDemoMode = false;
+        this.mode = localStorage.getItem('qs_app_mode') || 'user';
         this.settlementMode = 'optimized';
         this.isHackerMode = false;
         this.tutorialActive = false;
@@ -17,8 +17,23 @@ class State {
         this.payments = [];
         this.settlementHistory = [];
         
-        // Start Firebase sync if user exists
-        this.initFirebaseSync();
+        this.firebaseUnsubscribe = null;
+        
+        // Start mode-specific logic
+        this.initMode();
+    }
+
+    get isDemoMode() {
+        return this.mode === 'demo';
+    }
+
+    initMode() {
+        if (this.isDemoMode) {
+            this.stopFirebaseSync();
+            this.loadDemoData();
+        } else {
+            this.initFirebaseSync();
+        }
     }
 
     getUserKey(key) {
@@ -27,31 +42,41 @@ class State {
         return `u_${user.id}_${key}`;
     }
 
+    stopFirebaseSync() {
+        if (this.firebaseUnsubscribe) {
+            this.firebaseUnsubscribe();
+            this.firebaseUnsubscribe = null;
+            console.log("Firebase: Sync stopped.");
+        }
+    }
+
     initFirebaseSync() {
         const user = auth.getCurrentUser();
-        if (!user) return;
+        if (!user || this.isDemoMode) return;
 
-        const userPath = `users/${user.username}/data`;
+        this.stopFirebaseSync();
+
+        // Use emailKey for Firebase path (safe for special chars)
+        const userPath = `users/${user.emailKey}/data`;
         const dataRef = ref(db, userPath);
 
         // Real-time listener
-        onValue(dataRef, (snapshot) => {
+        this.firebaseUnsubscribe = onValue(dataRef, (snapshot) => {
+            if (this.isDemoMode) return; // Guard clause
+
             const data = snapshot.val();
             if (data) {
-                console.log("Firebase: Syncing data...", data);
+                console.log("Firebase: Syncing user data...", data);
                 this.members = data.members || [];
                 this.expenses = data.expenses || [];
                 this.payments = data.payments || [];
                 this.settlementHistory = data.settlementHistory || [];
                 
-                // Sync settings if they exist
                 if (data.settings) {
                     this.settlementMode = data.settings.settlementMode || this.settlementMode;
                     this.isHackerMode = data.settings.isHackerMode || this.isHackerMode;
-                    this.isDemoMode = data.settings.isDemoMode || this.isDemoMode;
                 }
                 
-                // Trigger UI update if app is running
                 if (window.app) window.app.updateUI();
             }
         }, (error) => {
@@ -59,15 +84,38 @@ class State {
         });
     }
 
+    loadDemoData() {
+        console.log("Demo: Loading local demo data...");
+        this.members = JSON.parse(localStorage.getItem('demo_members')) || [...DEMO_DATA.members];
+        this.expenses = JSON.parse(localStorage.getItem('demo_expenses')) || [...DEMO_DATA.expenses];
+        this.payments = JSON.parse(localStorage.getItem('demo_payments')) || [];
+        this.settlementHistory = JSON.parse(localStorage.getItem('demo_history')) || [];
+        this.settlementMode = localStorage.getItem('demo_settlement_mode') || 'optimized';
+    }
+
+    saveDemoData() {
+        localStorage.setItem('demo_members', JSON.stringify(this.members));
+        localStorage.setItem('demo_expenses', JSON.stringify(this.expenses));
+        localStorage.setItem('demo_payments', JSON.stringify(this.payments));
+        localStorage.setItem('demo_history', JSON.stringify(this.settlementHistory));
+        localStorage.setItem('demo_settlement_mode', this.settlementMode);
+    }
+
     load() {
-        // No longer loading from local storage
+        // No longer used for user mode as Firebase is primary
+        if (this.isDemoMode) this.loadDemoData();
     }
 
     save() {
-        // Save to Firebase if user is logged in
+        if (this.isDemoMode) {
+            this.saveDemoData();
+            return;
+        }
+
+        // User Mode: Save to Firebase
         const user = auth.getCurrentUser();
-        if (user && !this.isDemoMode) {
-            const userPath = `users/${user.username}/data`;
+        if (user) {
+            const userPath = `users/${user.emailKey}/data`;
             const dataRef = ref(db, userPath);
             set(dataRef, {
                 members: this.members,
@@ -76,8 +124,7 @@ class State {
                 settlementHistory: this.settlementHistory,
                 settings: {
                     settlementMode: this.settlementMode,
-                    isHackerMode: this.isHackerMode,
-                    isDemoMode: this.isDemoMode
+                    isHackerMode: this.isHackerMode
                 }
             }).catch(error => {
                 console.error("Firebase Save Error:", error);
@@ -86,20 +133,24 @@ class State {
     }
 
     setDemoMode(active) {
-        this.isDemoMode = active;
+        this.mode = active ? 'demo' : 'user';
+        localStorage.setItem('qs_app_mode', this.mode);
+        
+        // Reset state completely when switching
+        this.members = [];
+        this.expenses = [];
+        this.payments = [];
+        this.settlementHistory = [];
+        
         if (active) {
-            this.members = [...DEMO_DATA.members];
-            this.expenses = [...DEMO_DATA.expenses];
-            this.payments = [];
-            this.settlementHistory = [];
             this.tutorialActive = true;
             this.tutorialStep = 0;
+            this.initMode();
         } else {
-            // Re-initialize Firebase sync to restore user data
-            this.initFirebaseSync();
+            this.tutorialActive = false;
+            this.initMode();
         }
         
-        // Trigger UI update
         if (window.app) window.app.updateUI();
     }
 
@@ -202,6 +253,31 @@ class State {
         });
         
         this.save();
+    }
+
+    async wipeAllData() {
+        const user = auth.getCurrentUser();
+        if (!user) return;
+
+        try {
+            // 1. Delete from Firebase
+            const userRef = ref(db, `users/${user.emailKey}`);
+            await remove(userRef);
+            
+            // 2. Clear Local State
+            this.members = [];
+            this.expenses = [];
+            this.payments = [];
+            this.settlementHistory = [];
+            
+            // 3. Clear Local Storage Session
+            localStorage.clear();
+            
+            return true;
+        } catch (error) {
+            console.error("SmartSplit Wipe Error:", error);
+            throw error;
+        }
     }
 
     clearAll() {
