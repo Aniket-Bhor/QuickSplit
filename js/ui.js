@@ -5,7 +5,7 @@ import { SettlementCard } from './components/settlementCard.js';
 import { FlowCard } from './components/flowCard.js';
 import { SettlementHistoryItem } from './components/settlementHistoryItem.js';
 
-export const renderMembers = (members, payerSelect, splitList, membersList) => {
+export const renderMembers = (members, payerSelect, splitList, membersList, splitType = 'equal', customAmounts = {}) => {
     membersList.innerHTML = members.map(m => MemberCard(m)).join('');
     
     // Update Modal Selects
@@ -15,8 +15,9 @@ export const renderMembers = (members, payerSelect, splitList, membersList) => {
 
     splitList.innerHTML = members.map(m => `
         <label class="flex items-center gap-3 p-3 hover:bg-slate-800/50 rounded-xl cursor-pointer transition-all border border-transparent hover:border-slate-700/50">
-            <input type="checkbox" name="splitWith" value="${m.id}" checked class="w-5 h-5 rounded-lg border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/40">
-            <span class="text-sm font-medium text-slate-300">${m.name}</span>
+            <input type="checkbox" name="splitWith" value="${m.id}" checked class="w-5 h-5 rounded-lg border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/40 split-checkbox" data-member-id="${m.id}">
+            <span class="flex-1 text-sm font-medium text-slate-300">${m.name}</span>
+            ${splitType === 'custom' ? `<input type="number" step="0.01" name="customAmount" data-member-id="${m.id}" class="w-24 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/40 custom-amount-input" value="${customAmounts[m.id] || ''}" placeholder="0.00">` : ''}
         </label>
     `).join('');
 };
@@ -29,7 +30,7 @@ export const renderExpenses = (expenses, members, historyList, emptyState) => {
         emptyState.classList.add('hidden');
         historyList.innerHTML = expenses.map(exp => {
             const payerName = members.find(m => m.id === exp.payer)?.name || 'Deleted User';
-            return ExpenseItem(exp, payerName);
+            return ExpenseItem(exp, payerName, members);
         }).join('');
     }
 };

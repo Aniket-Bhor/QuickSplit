@@ -260,18 +260,22 @@ class State {
         if (!user) return;
 
         try {
-            // 1. Delete from Firebase
-            const userRef = ref(db, `users/${user.emailKey}`);
-            await remove(userRef);
+            if (this.isDemoMode) {
+                // Clear Demo Data from Local Storage
+                const demoKeys = ['demo_members', 'demo_expenses', 'demo_payments', 'demo_history', 'demo_settlement_mode'];
+                demoKeys.forEach(k => localStorage.removeItem(k));
+                this.loadDemoData(); // Reload defaults
+            } else {
+                // Clear User Data from Firebase
+                const dataRef = ref(db, `users/${user.emailKey}/data`);
+                await remove(dataRef);
+            }
             
-            // 2. Clear Local State
+            // Clear Local Memory State
             this.members = [];
             this.expenses = [];
             this.payments = [];
             this.settlementHistory = [];
-            
-            // 3. Clear Local Storage Session
-            localStorage.clear();
             
             return true;
         } catch (error) {

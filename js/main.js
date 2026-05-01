@@ -2,7 +2,7 @@ import { state } from './state.js';
 import { auth } from './auth.js';
 import { seedDummyData } from './firebase.js';
 import { $, qs, qsa, formatCurrency } from './utils/helpers.js';
-import { calculateBalances, simplifyDebts, calculateRawDebts } from './calc.js';
+import { calculateBalances, simplifyDebts, calculateRawDebtsFromBalances } from './calc.js';
 import * as ui from './ui.js';
 
 class App {
@@ -17,6 +17,8 @@ class App {
             
             this.initSelectors();
             this.bindEvents();
+            this.initTheme();
+            this.initKonamiCode();
             
             // Show loading overlay if user is logged in and not in demo mode
             if (auth.isAuthenticated() && !state.isDemoMode) {
@@ -63,6 +65,15 @@ class App {
         this.userNameDisplay = $('userNameDisplay');
         this.logoutBtn = $('logoutBtn');
         this.editingExpenseId = null;
+        this.splitTypeSelect = $('splitType');
+        this.customSplitValidation = $('customSplitValidation');
+        this.customSplitTotals = $('customSplitTotals');
+        this.customSplitInputsContainer = $('customSplitInputsContainer');
+        this.customSplitInputsDiv = $('customSplitInputs');
+        this.assignedTotalEl = $('assignedTotal');
+        this.remainingTotalEl = $('remainingTotal');
+        this.expAmountInput = $('expAmount');
+        this.currentCustomAmounts = {};
         
         // Mode Selectors
         this.simplifyBtn = $('simplifyBtn');
@@ -92,14 +103,28 @@ class App {
         $('addExpenseBtn').onclick = () => {
             this.editingExpenseId = null;
             $('expenseModalTitle').textContent = 'Add New Expense';
+            this.currentCustomAmounts = {};
             this.showExpenseModal();
         };
         $('closeModal').onclick = () => {
             this.expenseModal.classList.add('hidden');
             this.editingExpenseId = null;
             this.expenseForm.reset();
+            this.customSplitValidation.classList.add('hidden');
+            this.customSplitTotals.classList.add('hidden');
+            this.customSplitInputsContainer.classList.add('hidden');
+            this.customSplitInputsDiv.innerHTML = '';
+            this.currentCustomAmounts = {};
         };
         this.expenseForm.onsubmit = (e) => this.handleExpenseSubmit(e);
+        
+        this.splitTypeSelect.onchange = () => this.handleSplitTypeChange();
+        
+        this.expAmountInput.oninput = () => {
+            if (this.splitTypeSelect.value === 'custom') {
+                this.updateCustomTotals();
+            }
+        };
         
         $('closePartialModal').onclick = () => this.partialSettleModal.classList.add('hidden');
         this.partialSettleForm.onsubmit = (e) => this.handlePartialSettleSubmit(e);
@@ -115,16 +140,103 @@ class App {
         
         $('selectAllBtn').onclick = () => {
             qsa('input[name="splitWith"]').forEach(cb => cb.checked = true);
+            if (this.splitTypeSelect.value === 'custom') {
+                this.renderCustomSplitInputs();
+            }
         };
         $('deselectAllBtn').onclick = () => {
             qsa('input[name="splitWith"]').forEach(cb => cb.checked = false);
+            if (this.splitTypeSelect.value === 'custom') {
+                this.renderCustomSplitInputs();
+            }
         };
         
         this.clearHistoryBtn.onclick = () => this.handleClearHistory();
         this.historyFilter.onchange = () => this.updateUI();
+    }
+
+    updateCustomTotals() {
+        const totalAmount = parseFloat(this.expAmountInput.value) || 0;
+        const selectedMemberIds = Array.from(qsa('input[name="splitWith"]:checked')).map(cb => cb.value);
         
-        this.initKonamiCode();
-        this.initTheme();
+        let assignedTotal = 0;
+        selectedMemberIds.forEach(memberId => {
+            const amount = parseFloat(this.currentCustomAmounts[memberId] || 0);
+            if (!isNaN(amount)) {
+                assignedTotal += amount;
+            }
+        });
+        
+        const remaining = totalAmount - assignedTotal;
+        
+        this.assignedTotalEl.textContent = formatCurrency(assignedTotal);
+        this.remainingTotalEl.textContent = formatCurrency(remaining);
+        
+        if (Math.abs(remaining) > 0.01) {
+            this.remainingTotalEl.classList.remove('text-green-400');
+            this.remainingTotalEl.classList.add('text-blue-400');
+        } else {
+            this.remainingTotalEl.classList.remove('text-blue-400');
+            this.remainingTotalEl.classList.add('text-green-400');
+        }
+    }
+
+    renderCustomSplitInputs() {
+        const container = this.customSplitInputsDiv;
+        
+        if (!container) {
+            console.error("Custom split inputs container is missing!");
+            return;
+        }
+        
+        if (this.splitTypeSelect.value !== 'custom') {
+            container.innerHTML = "";
+            this.customSplitInputsContainer.classList.add('hidden');
+            return;
+        }
+        
+        this.customSplitInputsContainer.classList.remove('hidden');
+        
+        const selectedMemberIds = Array.from(qsa('input[name="splitWith"]:checked')).map(cb => cb.value);
+        const selectedMembers = state.members.filter(m => selectedMemberIds.includes(m.id));
+        
+        container.innerHTML = selectedMembers.map(member => `
+            <div class="flex items-center gap-3 p-2 bg-slate-800/50 rounded-lg">
+                <span class="flex-1 text-sm font-medium text-slate-300">${member.name}</span>
+                <input 
+                    type="number" 
+                    min="0" 
+                    step="0.01" 
+                    data-member-id="${member.id}" 
+                    class="custom-amount-input w-24 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/40" 
+                    placeholder="₹0" 
+                    value="${this.currentCustomAmounts[member.id] || ''}" 
+                />
+            </div>
+        `).join('');
+        
+        this.bindCustomAmountInputs();
+        this.updateCustomTotals();
+    }
+
+    bindCustomAmountInputs() {
+        qsa('.custom-amount-input').forEach(input => {
+            input.oninput = (e) => {
+                this.currentCustomAmounts[e.target.dataset.memberId] = e.target.value;
+                this.updateCustomTotals();
+            };
+        });
+    }
+
+    attachSplitListEventListeners() {
+        // Attach listeners to split checkboxes
+        qsa('input[name="splitWith"]').forEach(cb => {
+            cb.onchange = () => {
+                if (this.splitTypeSelect.value === 'custom') {
+                    this.renderCustomSplitInputs();
+                }
+            };
+        });
     }
 
     updateUserDisplay() {
@@ -166,7 +278,7 @@ class App {
         
         const balances = calculateBalances(state.members, state.expenses, state.payments);
         const { settlements: optimizedSettlements, naiveCount } = simplifyDebts(balances);
-        const rawSettlements = calculateRawDebts(state.expenses, state.payments);
+        const rawSettlements = calculateRawDebtsFromBalances(balances, state.members);
         
         const currentSettlements = state.settlementMode === 'optimized' ? optimizedSettlements : rawSettlements;
 
@@ -477,10 +589,33 @@ class App {
         }
     }
 
+    handleSplitTypeChange() {
+        this.customSplitValidation.classList.add('hidden');
+        
+        if (this.splitTypeSelect.value === 'equal') {
+            this.customSplitTotals.classList.add('hidden');
+            this.customSplitInputsContainer.classList.add('hidden');
+            this.customSplitInputsDiv.innerHTML = '';
+        } else {
+            this.customSplitTotals.classList.remove('hidden');
+            this.renderCustomSplitInputs();
+        }
+    }
+
     showExpenseModal() {
         if (state.members.length === 0) return ui.showToast(this.toastContainer, "Add members first!", "error");
         this.expenseModal.classList.remove('hidden');
-        ui.renderMembers(state.members, this.expPayerSelect, this.splitAmongList, this.membersList);
+        this.splitTypeSelect.value = 'equal';
+        this.customSplitTotals.classList.add('hidden');
+        this.customSplitInputsContainer.classList.add('hidden');
+        this.customSplitInputsDiv.innerHTML = '';
+        
+        // Reset the split among list to just checkboxes for equal split
+        ui.renderMembers(state.members, this.expPayerSelect, this.splitAmongList, this.membersList, 'equal', {});
+        this.customSplitValidation.classList.add('hidden');
+        
+        // Attach listeners to split list after rendering
+        setTimeout(() => this.attachSplitListEventListeners(), 0);
     }
 
     handleExpenseSubmit(e) {
@@ -488,6 +623,7 @@ class App {
         const desc = $('expDesc').value.trim();
         const amount = parseFloat($('expAmount').value);
         const payer = $('expPayer').value;
+        const splitType = this.splitTypeSelect.value;
         const splitWith = Array.from(qsa('input[name="splitWith"]:checked')).map(cb => cb.value);
 
         if (!desc) return ui.showToast(this.toastContainer, "Enter a description", "error");
@@ -495,14 +631,39 @@ class App {
         if (!payer) return ui.showToast(this.toastContainer, "Select a payer", "error");
         if (splitWith.length === 0) return ui.showToast(this.toastContainer, "Select at least one person!", "error");
 
+        let participants = null;
+        if (splitType === 'custom') {
+            participants = [];
+            let totalCustomAmount = 0;
+            splitWith.forEach(memberId => {
+                const input = qsa(`#customSplitInputs .custom-amount-input[data-member-id="${memberId}"]`)[0];
+                const owedAmount = parseFloat(input?.value || 0);
+                if (isNaN(owedAmount) || owedAmount < 0) {
+                    this.customSplitValidation.textContent = "Invalid amount for one or more participants!";
+                    this.customSplitValidation.classList.remove('hidden');
+                    return ui.showToast(this.toastContainer, "Invalid custom amounts!", "error");
+                }
+                participants.push({ memberId, owedAmount });
+                totalCustomAmount += owedAmount;
+            });
+
+            if (Math.abs(totalCustomAmount - amount) > 0.01) {
+                this.customSplitValidation.textContent = `Custom amounts total ₹${totalCustomAmount.toFixed(2)}, but expense is ₹${amount.toFixed(2)}. They must match!`;
+                this.customSplitValidation.classList.remove('hidden');
+                return ui.showToast(this.toastContainer, "Custom amounts don't match total!", "error");
+            }
+        }
+
         if (this.editingExpenseId) {
             state.removeExpense(this.editingExpenseId);
             this.editingExpenseId = null;
         }
 
-        state.addExpense({ desc, amount, payer, splitWith });
+        state.addExpense({ desc, amount, payer, splitWith, splitType, participants });
         this.expenseForm.reset();
         this.expenseModal.classList.add('hidden');
+        this.currentCustomAmounts = {};
+        this.customSplitValidation.classList.add('hidden');
         this.updateUI();
         ui.showToast(this.toastContainer, "Expense saved", "success");
     }
@@ -518,10 +679,28 @@ class App {
         $('expAmount').value = exp.amount;
         $('expPayer').value = exp.payer;
         
+        this.splitTypeSelect.value = exp.splitType || 'equal';
+        this.currentCustomAmounts = {};
+        if (exp.splitType === 'custom' && exp.participants) {
+            exp.participants.forEach(p => {
+                this.currentCustomAmounts[p.memberId] = p.owedAmount;
+            });
+        }
+        
         this.showExpenseModal();
-        qsa('input[name="splitWith"]').forEach(cb => {
-            cb.checked = exp.splitWith.includes(cb.value);
-        });
+        
+        // Manually set checkboxes after showExpenseModal renders everything
+        setTimeout(() => {
+            qsa('input[name="splitWith"]').forEach(cb => {
+                cb.checked = exp.splitWith.includes(cb.value);
+            });
+            
+            // If custom split, render custom inputs and update totals
+            if (this.splitTypeSelect.value === 'custom') {
+                this.customSplitTotals.classList.remove('hidden');
+                this.renderCustomSplitInputs();
+            }
+        }, 0);
     }
 
     handleDeleteExpense(id) {
@@ -711,10 +890,9 @@ class App {
                 try {
                     this.loadingOverlay.classList.remove('hidden');
                     await state.wipeAllData();
-                    ui.showToast(this.toastContainer, "All data wiped. Redirecting...", "info");
-                    setTimeout(() => {
-                        window.location.href = 'login.html';
-                    }, 1500);
+                    ui.showToast(this.toastContainer, "All group data has been wiped.", "success");
+                    this.updateUI();
+                    this.loadingOverlay.classList.add('hidden');
                 } catch (error) {
                     this.loadingOverlay.classList.add('hidden');
                     ui.showToast(this.toastContainer, "Wipe failed. Try again.", "error");
