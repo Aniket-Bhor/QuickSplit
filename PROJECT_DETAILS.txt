@@ -1,0 +1,99 @@
+SMARTSPLIT – PROJECT COMPREHENSIVE DETAILS
+==========================================
+
+1. PROJECT OVERVIEW
+-------------------
+SmartSplit is a premium, intelligent web-based expense sharing application designed to simplify group financial management. It focuses on debt optimization, high-end UI/UX, and transparent transaction tracking.
+
+2. CORE CONCEPT
+---------------
+- Users add group members.
+- Users record shared expenses (who paid and who was involved).
+- The system calculates net balances for everyone.
+- An intelligent algorithm suggests the minimum number of transactions needed to settle all debts.
+
+3. TECH STACK (NO BUILD TOOLS)
+------------------------------
+- Frontend: HTML5, Tailwind CSS (via CDN)
+- Logic: Vanilla JavaScript (ES6 Modules)
+- Styling: Custom CSS (Glassmorphism, Animations)
+- Storage: LocalStorage (Browser-based persistence)
+- Icons: SVG implementation
+
+4. ARCHITECTURE & CODE STRUCTURE
+--------------------------------
+The project follows a modular ES6 architecture for clean separation of concerns:
+- index.html: Main entry point and layout.
+- js/main.js: App controller, event binding, and high-level UI updates.
+- js/state.js: Central state engine managing data, persistence, and modes.
+- js/calc.js: Mathematical core for balance calculation and optimization algorithms.
+- js/ui.js: DOM rendering engine.
+- js/components/: Reusable UI templates (Functional Components).
+    - memberCard.js
+    - expenseItem.js
+    - settlementCard.js
+    - settlementHistoryItem.js
+    - flowCard.js
+- js/utils/: Helpers and shared constants.
+    - helpers.js: Currency formatting (INR), DOM utilities, UUID generator.
+    - constants.js: Global keys and Demo Data.
+
+5. CORE FEATURES
+----------------
+- Member Management: Add/Remove members.
+- Expense Management: Add/Edit/Delete expenses with custom split groups.
+- Real-time Balances: Instant recalculation of net balances.
+- INR Support: Localized currency formatting (₹).
+- Responsive Design: Fully optimized for Mobile and Desktop.
+
+6. ADVANCED FEATURES
+--------------------
+- Smart Debt Optimization: Greedy algorithm matches highest debtors with highest creditors to minimize total payments.
+- Toggle-based Comparison System: Switch between "Raw Debts" (direct relationships) and "Smart Settlements" (optimized).
+- Partial Settlement Support: Pay a part of a debt using a custom branded modal; the system tracks the remaining balance.
+- Settlement History: A transparent, persistent log of all payments (Full, Partial, and System Settlements).
+- Settle All: Marks all current debts as paid without deleting expense history (uses offsetting system payments).
+- Demo Mode: Separate storage for demo data vs. real user data for presentations.
+- Interactive Tutorial System: A step-by-step guided tour that highlights key features when Demo Mode is activated, featuring spotlight effects, tooltips, and smooth auto-scrolling.
+
+7. UI/UX & VISUAL POLISH
+------------------------
+- Theme System: Support for Dark and Light modes with persistence.
+- Glassmorphism UI: Modern, translucent cards with border glows.
+- Custom Brand Identity: Integrated SmartSplit logo and favicon.
+- Animations:
+    - Card entrance transitions.
+    - Live "Settlement Flow" visualization (moving dashes).
+    - Smooth number animations for balance updates.
+- Real-time Notifications: Toast messages for every user action.
+- Interactive Tutorial: Spotlight overlay with step indicators and skip/next controls.
+
+8. EASTER EGGS & INTERACTIVE DETAILS
+------------------------------------
+- Hacker Mode: Enter the Konami Code (↑↑↓↓←→←→) to trigger a neon neon matrix theme. Press ESC to exit.
+- Money Rain: Celebratory animation (₹ symbols) when a "Settle All" is performed.
+- Roast Mode: Dynamic, funny roast messages for members with extremely high debt.
+- Interactive Demo Tutorial: 5-step guided tour explaining core features to new users.
+
+9. TUTORIAL STEPS (DEMO MODE)
+-----------------------------
+Step 1: "Add Group Members" - Highlights the member name input.
+Step 2: "Add Your First Expense" - Highlights the Add Expense button.
+Step 3: "Live Balance Updates" - Focuses on the Balance Overview section.
+Step 4: "Smart Optimization" - Shows the Smart Optimize toggle button.
+Step 5: "Settlement Flow" - Highlights the settlements list.
+Step 6: "Settle All at Once" - Shows the Settle All button functionality.
+
+10. ALGORITHM DETAILS (GREEDY HEURISTIC)
+---------------------------------------
+1. Calculate Net Balance for each member: (Sum of Payments Made) - (Sum of Share in Expenses).
+2. Separate into Debtors (<0) and Creditors (>0).
+3. Sort both lists by absolute value (descending).
+4. Match the largest debtor with the largest creditor.
+5. Create a settlement, update balances, and repeat until all balances are settled (±0.01).
+
+11. DATA PERSISTENCE
+--------------------
+- Uses browser LocalStorage with specific keys for:
+    - Members, Expenses, Payments, Settlement History, Theme, Mode, Hacker Mode.
+- All data is persistent across refreshes and browser restarts.
